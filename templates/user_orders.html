@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Rastreo del pedido{% endblock %}
+{% block header_title %}Rastreo en tiempo real{% endblock %}
+{% block content %}
+<section class="tracking-layout" data-order-id="{{ order.id if order else '' }}" data-google-maps-key="{{ google_maps_key }}" data-start-lat="11.2410" data-start-lng="-74.2000" data-end-lat="11.2450" data-end-lng="-74.1950">
+  <div class="panel tracking-panel">
+    <p class="eyebrow">Estado actual</p>
+    {% if order %}
+      <h2>Pedido #{{ order.id }}</h2>
+      <p class="status-badge" id="order-status-text">{{ order.status }}</p>
+      <div class="timeline">
+        <span class="step {% if order.status in ['pedido confirmado', 'en cocina', 'en camino', 'puedes pasar a recogerlo'] %}active{% endif %}">Confirmado</span>
+        <span class="step {% if order.status in ['en cocina', 'en camino', 'puedes pasar a recogerlo'] %}active{% endif %}">Cocina</span>
+        <span class="step {% if order.status in ['en camino', 'puedes pasar a recogerlo'] %}active{% endif %}">Ruta</span>
+        <span class="step {% if order.status == 'puedes pasar a recogerlo' %}active{% endif %}">Recoger</span>
+      </div>
+      <div class="order-summary">
+        <p><strong>Total:</strong> {{ money(order.total) }}</p>
+        <p><strong>Pago:</strong> {{ order.payment_method }}</p>
+        <p><strong>Consumo:</strong> {{ order.dining_option }}</p>
+      </div>
+      <div class="items-list">
+        {% for item in order.items %}
+          <article>
+            <strong>{{ item.name_snapshot }}</strong>
+            <span>{{ item.quantity }} x {{ money(item.price_snapshot) }}</span>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <h2>No hay pedidos activos</h2>
+      <p>Haz un pedido desde la página principal.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel map-panel">
+    <p class="eyebrow">Simulación</p>
+    <h2>Mapa de Santa Marta</h2>
+    <div id="delivery-map" style="width:100%;height:320px;border-radius:8px;overflow:hidden"></div>
+    <p class="muted">Cuando el pedido esté en camino, la moto empieza a moverse.</p>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tracking.js') }}"></script>
+{% endblock %}

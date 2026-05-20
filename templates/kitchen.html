@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Cocina{% endblock %}
+{% block header_title %}Pedidos para cocina{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="eyebrow">Cocinero</p>
+  <h2>Pedidos pendientes</h2>
+  <div class="kitchen-list">
+    {% if orders %}
+      {% for order in orders %}
+        <article class="kitchen-card">
+          <div>
+            <strong>Pedido #{{ order.id }}</strong>
+            <p>Cliente: {{ order.user.name }}</p>
+            <p>Estado: {{ order.status }}</p>
+            <p>Pago: {{ order.payment_method }}</p>
+            <p>Consumo: {{ order.dining_option }}</p>
+            <div class="ingredient-box">
+              {% for item in order.items %}
+                <div class="kitchen-item">
+                  <strong>{{ item.name_snapshot }} x{{ item.quantity }}</strong>
+                  <small>{{ item.ingredient_notes }}</small>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          <form method="post" action="{{ url_for('kitchen_ready', order_id=order.id) }}">
+            <button class="btn primary" type="submit">Está listo</button>
+          </form>
+        </article>
+      {% endfor %}
+    {% else %}
+      <p>No hay pedidos pendientes.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

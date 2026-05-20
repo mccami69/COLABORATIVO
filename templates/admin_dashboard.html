@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Administrador{% endblock %}
+{% block header_title %}Panel de administrador{% endblock %}
+{% block content %}
+<section class="dashboard-grid admin-grid">
+  <div class="panel panel-wide">
+    <p class="eyebrow">Resumen</p>
+    <h2>Productos más vendidos y menos vendidos</h2>
+    <div class="split-columns">
+      <div>
+        <h3>Más vendidos</h3>
+        {% for product in top %}
+          <div class="metric-row">
+            <span>{{ product.name }}</span>
+            <strong>{{ product.sold_count }}</strong>
+          </div>
+        {% endfor %}
+      </div>
+      <div>
+        <h3>Menos vendidos</h3>
+        {% for product in bottom %}
+          <div class="metric-row">
+            <span>{{ product.name }}</span>
+            <strong>{{ product.sold_count }}</strong>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <p class="eyebrow">Inventario</p>
+    <h2>{{ products|length }} productos activos</h2>
+    <p>Usa las secciones Inventario, Productos y Estado para administrar el negocio.</p>
+  </div>
+</section>
+{% endblock %}

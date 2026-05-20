@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Inventario{% endblock %}
+{% block header_title %}Inventario{% endblock %}
+{% block content %}
+<section class="dashboard-grid admin-grid">
+  <form class="panel form-panel" method="post">
+    <p class="eyebrow">Nuevo ingreso</p>
+    <h2>Agregar inventario</h2>
+    <label>Nombre</label><input type="text" name="name" required>
+    <label>Precio</label><input type="number" name="price" step="0.01" required>
+    <label>Unidades</label><input type="number" name="units" step="0.01" required>
+    <label>Cantidad</label><input type="number" name="quantity" step="0.01" required>
+    <label>Tipo de cantidad</label><input type="text" name="unit_type" placeholder="mililitros o gramos" required>
+    <label>Valor por unidad</label><input type="number" name="unit_value" step="0.01" required>
+    <label>Valor venta</label><input type="number" name="sale_value" step="0.01" required>
+    <label>Fecha de vencimiento</label><input type="date" name="expiration_date" required>
+    <button class="btn primary full" type="submit">Guardar</button>
+  </form>
+
+  <div class="panel panel-wide">
+    <p class="eyebrow">Tabla</p>
+    <h2>Registros guardados</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th><th>Precio</th><th>Unidades</th><th>Cantidad</th><th>Tipo</th><th>Valor unidad</th><th>Venta</th><th>Ganancia</th><th>Total</th><th>Vence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              <td>{{ item.name }}</td>
+              <td>{{ money(item.price) }}</td>
+              <td>{{ item.units }}</td>
+              <td>{{ item.quantity }}</td>
+              <td>{{ item.unit_type }}</td>
+              <td>{{ money(item.unit_value) }}</td>
+              <td>{{ money(item.sale_value) }}</td>
+              <td>{{ money(item.profit) }}</td>
+              <td>{{ money(item.total) }}</td>
+              <td>{{ item.expiration_date }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

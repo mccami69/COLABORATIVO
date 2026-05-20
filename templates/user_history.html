@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Historial{% endblock %}
+{% block header_title %}Historial de pedidos{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="eyebrow">Tus pedidos anteriores</p>
+  <h2>Historial</h2>
+  {% if orders %}
+    <div class="history-list">
+      {% for order in orders %}
+        <article class="history-card">
+          <div class="history-top">
+            <strong>Pedido #{{ order.id }}</strong>
+            <span>{{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+          </div>
+          <p><strong>Estado:</strong> {{ order.status }}</p>
+          <p><strong>Pago:</strong> {{ order.payment_method }}</p>
+          <p><strong>Total:</strong> {{ money(order.total) }}</p>
+          <ul>
+            {% for item in order.items %}
+              <li>{{ item.quantity }} x {{ item.name_snapshot }} - {{ money(item.price_snapshot) }}</li>
+            {% endfor %}
+          </ul>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>No tienes pedidos todavía.</p>
+  {% endif %}
+</section>
+{% endblock %}

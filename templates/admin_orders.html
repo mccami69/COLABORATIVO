@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Estado de pedidos{% endblock %}
+{% block header_title %}Estado de pedidos{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="eyebrow">Pedidos</p>
+  <h2>Administrar estados</h2>
+  <div class="orders-list">
+    {% for order in orders %}
+      <article class="order-row">
+        <div>
+          <strong>Pedido #{{ order.id }}</strong>
+          <p>Usuario: {{ order.user.name }}</p>
+          <p>Total: {{ money(order.total) }}</p>
+          <p>Pago: {{ order.payment_method }} - {{ order.dining_option }}</p>
+          <p>Estado actual: {{ order.status }}</p>
+        </div>
+        <form method="post" class="status-form">
+          <input type="hidden" name="order_id" value="{{ order.id }}">
+          <select name="status">
+            <option value="pedido confirmado">pedido confirmado</option>
+            <option value="en cocina">en cocina</option>
+            <option value="en camino">en camino</option>
+            <option value="puedes pasar a recogerlo">puedes pasar a recogerlo</option>
+          </select>
+          <button class="btn primary" type="submit">Actualizar</button>
+        </form>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

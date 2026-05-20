@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block title %}Usuario - Principal{% endblock %}
+{% block header_title %}Menú y carrito{% endblock %}
+{% block content %}
+<section class="dashboard-grid user-grid">
+  <div class="panel panel-wide">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Sesión principal</p>
+        <h2>Productos de la cafetería</h2>
+      </div>
+      <div class="filters">
+        <button class="chip active" data-filter="all">Todos</button>
+        {% for category in categories %}
+          <button class="chip" data-filter="{{ category }}">{{ category }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="product-grid" id="product-grid">
+      {% for product in products %}
+        <article class="product-card {% if product.exhausted %}is-disabled{% endif %}" data-category="{{ product.category }}" data-product='{{ {
+          "id": product.id,
+          "name": product.name,
+          "description": product.description,
+          "category": product.category,
+          "image_url": product.image_url,
+          "price": product.discount_price if product.discount_price else product.price,
+          "base_price": product.price,
+          "discount_price": product.discount_price,
+          "ingredients": product.ingredients,
+          "ingredient_options": product.ingredient_options,
+          "exhausted": product.exhausted
+        } | tojson }}'>
+          <img src="{{ product.image_url }}" alt="{{ product.name }}">
+          <div class="product-meta">
+            <div>
+              <h3>{{ product.name }}</h3>
+              <p>{{ product.description }}</p>
+            </div>
+            <div class="price-row">
+              {% if product.discount_price %}
+                <span class="old-price">{{ money(product.price) }}</span>
+                <strong>{{ money(product.discount_price) }}</strong>
+              {% else %}
+                <strong>{{ money(product.price) }}</strong>
+              {% endif %}
+            </div>
+            <span class="pill">{{ product.category }}</span>
+            {% if product.exhausted %}<span class="pill danger">agotado</span>{% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+
+  <aside class="panel cart-panel">
+    <div class="section-header compact">
+      <div>
+        <p class="eyebrow">Carrito</p>
+        <h2>Tu pedido</h2>
+      </div>
+      <button class="link-btn" id="clear-cart" type="button">Vaciar</button>
+    </div>
+
+    <div id="cart-items" class="cart-items"></div>
+    <div class="cart-total">
+      <span>Total a pagar</span>
+      <strong id="cart-total">$0</strong>
+    </div>
+
+    <form id="checkout-form" class="checkout-form" method="post" action="{{ url_for('user_checkout') }}">
+      <input type="hidden" name="cart_payload" id="cart-payload">
+      <label>Pago</label>
+      <select name="payment_method" id="payment-method">
+        <option value="efectivo">Efectivo</option>
+        <option value="tarjeta">Tarjeta</option>
+      </select>
+      <label>¿Comer aquí o llevar?</label>
+      <select name="dining_option" id="dining-option">
+        <option value="cafeteria">En la cafetería</option>
+        <option value="llevar">Para llevar</option>
+      </select>
+      <button class="btn primary full" type="submit">Confirmar pedido</button>
+    </form>
+  </aside>
+</section>
+
+<div class="modal" id="product-modal" aria-hidden="true">
+  <div class="modal-card">
+    <button class="modal-close" id="modal-close" type="button">×</button>
+    <div class="modal-layout">
+      <img id="modal-image" src="" alt="Producto">
+      <div>
+        <p class="eyebrow" id="modal-category"></p>
+        <h2 id="modal-name"></h2>
+        <p id="modal-description"></p>
+        <div class="price-row modal-price">
+          <span class="old-price" id="modal-old-price"></span>
+          <strong id="modal-price"></strong>
+        </div>
+        <div id="ingredient-selects" class="ingredient-selects"></div>
+        <label>Cantidad</label>
+        <input type="number" id="modal-quantity" min="1" value="1">
+        <button class="btn primary" id="add-to-cart" type="button">Agregar al carrito</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Payment simulation modal -->
+<div class="modal" id="payment-modal" aria-hidden="true">
+  <div class="modal-card">
+    <button class="modal-close" id="payment-modal-close" type="button">×</button>
+    <div>
+      <p class="eyebrow">Pago con tarjeta</p>
+      <h2>Confirmar pago</h2>
+      <form id="payment-form" class="checkout-form" onsubmit="return false;">
+        <label>Tipo de tarjeta</label>
+        <select id="card-type">
+          <option value="credito">Crédito</option>
+          <option value="debito">Débito</option>
+        </select>
+
+        <label>Banco</label>
+        <input id="card-bank" type="text" placeholder="Banco emisor" />
+
+        <label>Número de tarjeta</label>
+        <input id="card-number" type="text" placeholder="1234 5678 9012 3456" />
+
+        <label>Monto a pagar</label>
+        <input id="card-amount" type="text" readonly />
+
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button class="btn primary" id="card-pay" type="button">Pagar</button>
+          <button class="btn" id="card-cancel" type="button">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}{% endblock %}

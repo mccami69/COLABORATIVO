@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}Productos{% endblock %}
+{% block header_title %}Productos del menú{% endblock %}
+{% block content %}
+<section class="dashboard-grid admin-grid">
+  <form class="panel form-panel" method="post">
+    <p class="eyebrow">{% if editing_product %}Editar producto{% else %}Nuevo producto{% endif %}</p>
+    <h2>{% if editing_product %}Actualizar en el menú{% else %}Agregar al menú{% endif %}</h2>
+    <input type="hidden" name="product_id" value="{{ form_values.product_id }}">
+    <label>Imagen URL</label><input type="text" name="image_url" value="{{ form_values.image_url }}" placeholder="Pega una URL o deja vacío">
+    <label>Nombre</label><input type="text" name="name" value="{{ form_values.name }}" required>
+    <label>Descripción</label><textarea name="description" rows="4" required>{{ form_values.description }}</textarea>
+    <label>Categoría</label>
+    <select name="category" required>
+      <option value="calientes" {% if form_values.category == 'calientes' %}selected{% endif %}>Calientes</option>
+      <option value="fríos" {% if form_values.category == 'fríos' %}selected{% endif %}>Fríos</option>
+      <option value="tortas" {% if form_values.category == 'tortas' %}selected{% endif %}>Tortas</option>
+      <option value="galletas" {% if form_values.category == 'galletas' %}selected{% endif %}>Galletas</option>
+      <option value="panes" {% if form_values.category == 'panes' %}selected{% endif %}>Panes</option>
+    </select>
+    <label>Ingredientes base</label><input type="text" name="ingredients" value="{{ form_values.ingredients }}" placeholder="café, leche, harina" required>
+    <label>Opciones de leche</label><input type="text" name="leche_options" value="{{ form_values.leche_options }}" placeholder="deslactosada, descremada, entera, almendra">
+    <label>Opciones de harina</label><input type="text" name="harina_options" value="{{ form_values.harina_options }}" placeholder="trigo, avena, integral">
+    <label>Opciones extra</label><input type="text" name="extra_options" value="{{ form_values.extra_options }}" placeholder="canela, vainilla, caramelo">
+    <label>Valor del producto</label><input type="number" name="price" step="0.01" value="{{ form_values.price }}" required>
+    <label>Valor en descuento</label><input type="number" name="discount_price" step="0.01" value="{{ form_values.discount_price }}">
+    <label class="checkline"><input type="checkbox" name="exhausted" {% if form_values.exhausted %}checked{% endif %}> Agotado</label>
+    <div class="admin-form-actions">
+      <button class="btn primary full" type="submit">{% if editing_product %}Guardar cambios{% else %}Guardar producto{% endif %}</button>
+      {% if editing_product %}
+        <a class="btn secondary full" href="{{ url_for('admin_products') }}">Cancelar edición</a>
+      {% endif %}
+    </div>
+  </form>
+
+  <div class="panel panel-wide">
+    <p class="eyebrow">Lista</p>
+    <h2>Productos en el menú</h2>
+    <div class="product-admin-list">
+      {% for product in products %}
+        <article class="admin-product-row {% if product.exhausted %}is-disabled{% endif %}">
+          <img src="{{ product.image_url }}" alt="{{ product.name }}">
+          <div class="admin-product-info">
+            <strong>{{ product.name }}</strong>
+            <p>{{ product.description }}</p>
+            <p>{{ product.category }} - {{ money(product.discount_price if product.discount_price else product.price) }}</p>
+            <p><small>Ingredientes: {{ product.ingredients }}</small></p>
+          </div>
+          <div class="admin-product-actions">
+            <a class="btn secondary" href="{{ url_for('admin_products', edit=product.id) }}">Editar</a>
+            <form method="post" action="{{ url_for('toggle_product', product_id=product.id) }}">
+              <button class="btn secondary" type="submit">{% if product.exhausted %}Disponible{% else %}Agotado{% endif %}</button>
+            </form>
+            <form method="post" action="{{ url_for('delete_product', product_id=product.id) }}" onsubmit="return confirm('¿Seguro que quieres borrar este producto?');">
+              <button class="btn danger" type="submit">Borrar</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

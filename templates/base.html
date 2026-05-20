@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Cafetería Virtual{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Cafetería virtual</p>
+        <h1>{% block header_title %}Sabor, pedidos y control{% endblock %}</h1>
+      </div>
+      <nav class="topnav">
+        {% if current_user.is_authenticated %}
+          {% if current_user.role == 'usuario' %}
+            <a href="{{ url_for('user_dashboard') }}">Principal</a>
+            <a href="{{ url_for('user_tracking') }}">Rastreo</a>
+            <a href="{{ url_for('user_history') }}">Historial</a>
+          {% elif current_user.role == 'admin' %}
+            <a href="{{ url_for('admin_dashboard') }}">Principal</a>
+            <a href="{{ url_for('admin_inventory') }}">Inventario</a>
+            <a href="{{ url_for('admin_products') }}">Productos</a>
+            <a href="{{ url_for('admin_orders') }}">Estado</a>
+          {% elif current_user.role == 'cocina' %}
+            <a href="{{ url_for('kitchen') }}">Cocina</a>
+          {% endif %}
+          <a class="nav-logout" href="{{ url_for('logout') }}">Salir</a>
+        {% endif %}
+      </nav>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <section class="flash-stack">
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </section>
+      {% endif %}
+    {% endwith %}
+
+    <main class="main-area">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
