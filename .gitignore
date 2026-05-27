@@ -1,0 +1,11 @@
+.venv
+venv/
+env/
+__pycache__/
+*.pyc
+instance/*.db
+.DS_Store
+.env
+*.log
+node_modules/
+.github/
