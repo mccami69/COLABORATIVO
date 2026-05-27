@@ -4,6 +4,7 @@ const trackingRoot = document.querySelector('.tracking-layout');
 const statusText = document.getElementById('order-status-text');
 const orderId = trackingRoot ? trackingRoot.dataset.orderId : '';
 const googleMapsKey = trackingRoot ? trackingRoot.dataset.googleMapsKey : '';
+const diningOption = trackingRoot ? (trackingRoot.dataset.diningOption || '').toLowerCase() : '';
 const startLat = trackingRoot ? parseFloat(trackingRoot.dataset.startLat || '11.2410') : 11.2410;
 const startLng = trackingRoot ? parseFloat(trackingRoot.dataset.startLng || '-74.2000') : -74.2;
 const endLat = trackingRoot ? parseFloat(trackingRoot.dataset.endLat || '11.2450') : 11.2450;
@@ -153,6 +154,9 @@ function showDomStatic() {
 }
 
 function initDisplay() {
+  if (diningOption !== 'domicilio') {
+    return;
+  }
   // Prefer Google Maps if key provided; otherwise try Leaflet; finally DOM fallback
   if (googleMapsKey) {
     loadGoogleMaps(googleMapsKey)
@@ -242,6 +246,9 @@ function stopDomAnimation() {
 
 // React to socket updates
 function ensureAnimationForStatus() {
+  if (diningOption !== 'domicilio') {
+    return;
+  }
   // prefer Google Maps animation
   if (googleMapsKey && window.google && window.google.maps && map) {
     startAnimation();
@@ -267,6 +274,7 @@ if (sock && orderId) {
   sock.on('order_status_updated', (payload) => {
     if (String(payload.order_id) !== String(orderId)) return;
     if (statusText) statusText.textContent = payload.status;
+    if (diningOption !== 'domicilio') return;
     const s = payload.status && payload.status.toLowerCase();
     if (s === 'en camino' || s === 'ruta') {
       ensureAnimationForStatus();
@@ -281,7 +289,7 @@ if (sock && orderId) {
 // Initialize on page load: if status already en camino/ruta, load maps and animate
 if (statusText) {
   const s = statusText.textContent && statusText.textContent.trim().toLowerCase();
-  if (s === 'en camino' || s === 'ruta') {
+  if (diningOption === 'domicilio' && (s === 'en camino' || s === 'ruta')) {
     ensureAnimationForStatus();
   }
 }

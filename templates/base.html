@@ -24,13 +24,22 @@
             <a href="{{ url_for('user_dashboard') }}">Principal</a>
             <a href="{{ url_for('user_tracking') }}">Rastreo</a>
             <a href="{{ url_for('user_history') }}">Historial</a>
+          {% elif current_user.role == 'mesero' %}
+            <a href="{{ url_for('user_dashboard') }}">Principal</a>
+          {% elif current_user.role == 'cajero' %}
+            <a href="{{ url_for('cashier_dashboard') }}">Caja</a>
           {% elif current_user.role == 'admin' %}
             <a href="{{ url_for('admin_dashboard') }}">Principal</a>
             <a href="{{ url_for('admin_inventory') }}">Inventario</a>
             <a href="{{ url_for('admin_products') }}">Productos</a>
             <a href="{{ url_for('admin_orders') }}">Estado</a>
+            <a href="{{ url_for('admin_users') }}">Usuarios</a>
           {% elif current_user.role == 'cocina' %}
             <a href="{{ url_for('kitchen') }}">Cocina</a>
+          {% elif current_user.role == 'repartidor' %}
+            <a href="{{ url_for('delivery_dashboard') }}">Repartidor</a>
+          {% elif current_user.role == 'mesero' %}
+            <a href="{{ url_for('staff_dashboard') }}">Panel</a>
           {% endif %}
           <a class="nav-logout" href="{{ url_for('logout') }}">Salir</a>
         {% endif %}

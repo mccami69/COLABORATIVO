@@ -31,7 +31,8 @@
   <div class="panel">
     <p class="eyebrow">Inventario</p>
     <h2>{{ products|length }} productos activos</h2>
-    <p>Usa las secciones Inventario, Productos y Estado para administrar el negocio.</p>
+    <p>Administra el personal de mesa, caja y reparto desde un solo lugar.</p>
+    <a class="btn primary full" href="{{ url_for('admin_users') }}">Crear usuarios de staff</a>
   </div>
 </section>
 {% endblock %}

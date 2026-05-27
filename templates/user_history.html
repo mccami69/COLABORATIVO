@@ -16,6 +16,8 @@
           <p><strong>Estado:</strong> {{ order.status }}</p>
           <p><strong>Pago:</strong> {{ order.payment_method }}</p>
           <p><strong>Total:</strong> {{ money(order.total) }}</p>
+          <p><strong>Puntos ganados:</strong> {{ order.points_earned if order.points_earned else 0 }}</p>
+          <p><strong>Puntos redimidos:</strong> {{ order.points_redeemed if order.points_redeemed else 0 }}</p>
           <ul>
             {% for item in order.items %}
               <li>{{ item.quantity }} x {{ item.name_snapshot }} - {{ money(item.price_snapshot) }}</li>

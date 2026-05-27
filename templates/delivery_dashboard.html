@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Repartidor{% endblock %}
+{% block header_title %}Panel de repartidor{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="eyebrow">Repartidor</p>
+  <h2>Pedidos a domicilio pendientes</h2>
+  <div class="kitchen-list">
+    {% if deliveries %}
+      {% for delivery in deliveries %}
+        <article class="kitchen-card">
+          <div>
+            <strong>Pedido #{{ delivery.order_id }}</strong>
+            <p>Cliente: {{ delivery.customer_name_snapshot }}</p>
+            <p>Dirección: {{ delivery.delivery_address }}</p>
+            <p>Valor domicilio: {{ money(delivery.delivery_fee) }}</p>
+            <p>Pago: {{ delivery.payment_method }}{% if delivery.cash_on_delivery %} (contra entrega){% endif %}</p>
+            <p>Estado: {{ delivery.status }}</p>
+          </div>
+          <form method="post" action="{{ url_for('delivery_delivered', order_id=delivery.order_id) }}">
+            <button class="btn primary" type="submit">Entregado</button>
+          </form>
+        </article>
+      {% endfor %}
+    {% else %}
+      <p>No hay pedidos a domicilio pendientes.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

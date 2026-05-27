@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Usuarios de staff{% endblock %}
+{% block header_title %}Gestión de usuarios{% endblock %}
+{% block content %}
+<section class="dashboard-grid admin-grid">
+  <div class="panel panel-wide">
+    <p class="eyebrow">Nuevo usuario</p>
+    <h2>Crear mesero, cajero o repartidor</h2>
+    <form method="post" class="checkout-form">
+      <div>
+        <label>Nombre</label>
+        <input type="text" name="name" required>
+      </div>
+      <div>
+        <label>Correo de acceso</label>
+        <input type="email" name="email" required>
+      </div>
+      <div>
+        <label>Contraseña</label>
+        <input type="password" name="password" required>
+      </div>
+      <div>
+        <label>Rol</label>
+        <select name="role" required>
+          <option value="mesero">Mesero</option>
+          <option value="cajero">Cajero</option>
+          <option value="repartidor">Repartidor</option>
+        </select>
+      </div>
+      <button class="btn primary" type="submit">Crear usuario</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <p class="eyebrow">Usuarios creados</p>
+    <h2>{{ staff_users|length }} activos</h2>
+    <div class="history-list" style="margin-top:16px;">
+      {% for user in staff_users %}
+        <article class="history-card">
+          <div>
+            <strong>{{ user.name }}</strong>
+            <p>{{ user.email }}</p>
+          </div>
+          <span class="pill">{{ user.role }}</span>
+        </article>
+      {% else %}
+        <p>No hay usuarios de staff creados todavía.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

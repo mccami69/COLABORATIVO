@@ -28,6 +28,10 @@ const cardTypeSelect = document.getElementById('card-type');
 let paymentConfirmed = false;
 const filterButtons = document.querySelectorAll('.chip[data-filter]');
 const socket = typeof io !== 'undefined' ? io() : null;
+const staffRoleInput = document.getElementById('staff-role');
+const diningOptionSelect = document.getElementById('dining-option');
+const deliveryAddressInput = document.getElementById('delivery-address');
+const deliveryAddressGroup = document.getElementById('delivery-address-group');
 
 let currentProduct = null;
 
@@ -46,6 +50,27 @@ function money(value) {
 
 function cartTotalValue(cart) {
   return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+}
+
+function calculateDeliveryDistance(address) {
+  const cleanedAddress = (address || '').trim();
+  if (!cleanedAddress) return 0;
+  const estimatedDistance = Number((cleanedAddress.length / 18).toFixed(2));
+  return Math.max(1.5, Math.min(12, estimatedDistance));
+}
+
+function calculateDeliveryFee(distanceKm) {
+  if (!distanceKm) return 0;
+  return Math.round(2500 + (distanceKm * 900));
+}
+
+function toggleDeliveryAddressField() {
+  if (!deliveryAddressGroup || !diningOptionSelect) return;
+  const isHomeDelivery = diningOptionSelect.value === 'domicilio';
+  deliveryAddressGroup.style.display = isHomeDelivery ? 'grid' : 'none';
+  if (!isHomeDelivery && deliveryAddressInput) {
+    deliveryAddressInput.value = '';
+  }
 }
 
 function renderCart() {
@@ -76,8 +101,60 @@ function renderCart() {
       cartItems.appendChild(article);
     });
   }
-  cartTotal.textContent = money(cartTotalValue(cart));
+  const baseTotal = cartTotalValue(cart);
+  const usePointsInput = document.getElementById('use-points');
+  const pointValueInput = document.getElementById('point-value');
+  const discountEl = document.querySelector('.cart-discount');
+  const discountAmountEl = document.getElementById('cart-discount');
+  const deliveryFeeEl = document.querySelector('.cart-delivery-fee');
+  const deliveryFeeAmountEl = document.getElementById('cart-delivery-fee-amount');
+  const subtotalEl = document.getElementById('cart-subtotal');
+  const finalTotalEl = document.getElementById('cart-total');
+
+  const maxPoints = usePointsInput ? Number(usePointsInput.max || 0) : 0;
+  const usePoints = usePointsInput ? Math.max(0, Math.min(Number(usePointsInput.value || 0), maxPoints)) : 0;
+  const pointValue = pointValueInput ? Number(pointValueInput.value || 0) : 0;
+  const discount = Math.max(0, usePoints * pointValue);
+  const diningOption = diningOptionSelect ? diningOptionSelect.value : 'cafeteria';
+  const deliveryAddress = deliveryAddressInput ? deliveryAddressInput.value : '';
+  const deliveryDistance = diningOption === 'domicilio' ? calculateDeliveryDistance(deliveryAddress) : 0;
+  const deliveryFee = diningOption === 'domicilio' ? calculateDeliveryFee(deliveryDistance) : 0;
+  const finalTotal = Math.max(0, baseTotal + deliveryFee - discount);
+
+  if (subtotalEl) subtotalEl.textContent = money(baseTotal);
+  if (discountEl) discountEl.style.display = discount > 0 ? 'block' : 'none';
+  if (discountAmountEl) discountAmountEl.textContent = money(discount);
+  if (deliveryFeeEl) deliveryFeeEl.style.display = deliveryFee > 0 ? 'block' : 'none';
+  if (deliveryFeeAmountEl) deliveryFeeAmountEl.textContent = money(deliveryFee);
+  if (finalTotalEl) finalTotalEl.textContent = money(finalTotal);
+  // update card amount if payment modal open
+  if (cardAmountInput) cardAmountInput.value = money(finalTotal);
   cartPayload.value = JSON.stringify(cart);
+}
+
+// Re-render cart when use-points changes
+const usePointsInputEl = document.getElementById('use-points');
+if (usePointsInputEl) {
+  usePointsInputEl.addEventListener('input', () => {
+    // enforce integer and max
+    let v = Math.floor(Number(usePointsInputEl.value || 0));
+    const max = Number(usePointsInputEl.max || 0);
+    if (v < 0) v = 0;
+    if (v > max) v = max;
+    usePointsInputEl.value = v;
+    renderCart();
+  });
+}
+
+if (diningOptionSelect) {
+  diningOptionSelect.addEventListener('change', () => {
+    toggleDeliveryAddressField();
+    renderCart();
+  });
+}
+
+if (deliveryAddressInput) {
+  deliveryAddressInput.addEventListener('input', renderCart);
 }
 
 function addItemToCart(product, quantity, ingredients) {
@@ -205,16 +282,28 @@ if (clearCartBtn) {
 if (checkoutForm) {
   checkoutForm.addEventListener('submit', (event) => {
     const cart = loadCart();
+    const staffRole = staffRoleInput ? staffRoleInput.value : '';
     if (!cart.length) {
       event.preventDefault();
       alert('Tu carrito está vacío.');
       return;
     }
+    if (diningOptionSelect && diningOptionSelect.value === 'domicilio' && deliveryAddressInput && !deliveryAddressInput.value.trim()) {
+      event.preventDefault();
+      alert('Ingresa la dirección de entrega para el pedido a domicilio.');
+      return;
+    }
+    if (staffRole === 'mesero') {
+      paymentConfirmed = true;
+      return;
+    }
     // Simulated card flow: show payment modal first
     if (paymentMethod && paymentMethod.value === 'tarjeta' && !paymentConfirmed) {
       event.preventDefault();
-      // fill amount
-      cardAmountInput.value = money(cartTotalValue(cart));
+      // update totals (including discount) then fill amount
+      renderCart();
+      const shownTotal = document.getElementById('cart-total') ? document.getElementById('cart-total').textContent : money(cartTotalValue(cart));
+      cardAmountInput.value = shownTotal;
       // show modal
       if (paymentModal) {
         paymentModal.classList.add('open');
@@ -279,8 +368,18 @@ if (socket) {
   socket.on('products_updated', () => {
     if (productGrid) location.reload();
   });
+  socket.on('order_status_updated', (payload) => {
+    const status = (payload && payload.status ? String(payload.status) : '').toLowerCase();
+    if (document.querySelector('.pickup-orders-list') && status === 'puedes pasar a recogerlo') {
+      location.reload();
+      return;
+    }
+    if (document.querySelector('.kitchen-list') || document.querySelector('.orders-list') || document.querySelector('.pickup-orders-list')) {
+      location.reload();
+    }
+  });
   socket.on('orders_updated', () => {
-    if (document.querySelector('.orders-list') || document.querySelector('.kitchen-list')) {
+    if (document.querySelector('.orders-list') || document.querySelector('.kitchen-list') || document.querySelector('.pickup-orders-list')) {
       location.reload();
     }
   });

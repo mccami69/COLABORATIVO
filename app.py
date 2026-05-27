@@ -11,6 +11,7 @@ from flask_login import LoginManager, UserMixin, current_user, login_required, l
 from flask_socketio import SocketIO
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
+from sqlalchemy import create_engine, text
 
 load_dotenv()
 
@@ -19,18 +20,35 @@ INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 os.makedirs(INSTANCE_DIR, exist_ok=True)
 DEFAULT_SQLITE_URL = f"sqlite:///{Path(INSTANCE_DIR, 'cafeteria_virtual.db').as_posix()}"
 
+
+def resolve_database_uri():
+    database_uri = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+
+    if database_uri.startswith("mysql"):
+        try:
+            engine = create_engine(database_uri, pool_pre_ping=True)
+            with engine.connect():
+                pass
+        except Exception as exc:
+            print("Advertencia: no se pudo conectar a MySQL, usando SQLite local.", exc)
+            return DEFAULT_SQLITE_URL
+
+    return database_uri
+
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "cafeteria-secreta")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-    "DATABASE_URL",
-    DEFAULT_SQLITE_URL,
-)
+app.config["SQLALCHEMY_DATABASE_URI"] = resolve_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+
+# Configuración de puntos: 1 punto por cada 1000 unidades de moneda gastadas.
+# Cada punto vale 100 unidades al redimir.
+POINTS_EARN_THRESHOLD = 1000
+POINT_VALUE = 100
 
 
 def make_placeholder_svg(title, bg, fg="#ffffff"):
@@ -64,6 +82,21 @@ def parse_json_text(value, default):
 
 def money(value):
     return f"${value:,.0f}".replace(",", ".")
+
+
+def calculate_delivery_distance(address):
+    cleaned_address = (address or "").strip()
+    if not cleaned_address:
+        return 0
+
+    estimated_distance = round(len(cleaned_address) / 18.0, 2)
+    return max(1.5, min(12.0, estimated_distance))
+
+
+def calculate_delivery_fee(distance_km):
+    if not distance_km:
+        return 0
+    return round(2500 + (distance_km * 900), 0)
 
 
 def get_lan_ip():
@@ -122,6 +155,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(30), nullable=False, default="usuario")
+    points = db.Column(db.Integer, nullable=False, default=0)
 
 
 class Product(db.Model):
@@ -136,6 +170,15 @@ class Product(db.Model):
     ingredient_options = db.Column(db.Text, nullable=False, default="{}")
     exhausted = db.Column(db.Boolean, default=False)
     sold_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class DiningTable(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    table_number = db.Column(db.String(20), nullable=False, unique=True)
+    capacity = db.Column(db.Integer, nullable=False, default=4)
+    location_note = db.Column(db.String(255), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -161,6 +204,8 @@ class Order(db.Model):
     payment_method = db.Column(db.String(30), nullable=False)
     dining_option = db.Column(db.String(30), nullable=False)
     total = db.Column(db.Float, nullable=False)
+    points_earned = db.Column(db.Integer, nullable=False, default=0)
+    points_redeemed = db.Column(db.Integer, nullable=False, default=0)
     kitchen_done = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -178,6 +223,77 @@ class OrderItem(db.Model):
     ingredient_notes = db.Column(db.Text, nullable=False, default="{}")
 
     order = db.relationship("Order", backref=db.backref("items", lazy=True, cascade="all, delete-orphan"))
+
+
+class PointsTransaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
+    points_changed = db.Column(db.Integer, nullable=False)
+    type = db.Column(db.String(10), nullable=False)  # 'gain' or 'redeem'
+    description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('points_transactions', lazy=True))
+
+
+class OrderStatusHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
+    service_type = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(80), nullable=False)
+    actor_role = db.Column(db.String(30), nullable=False)
+    actor_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    notes = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    order = db.relationship('Order', backref=db.backref('status_history', lazy=True, cascade='all, delete-orphan'))
+    actor_user = db.relationship('User', foreign_keys=[actor_user_id])
+
+
+class DineInOrder(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False, unique=True)
+    table_id = db.Column(db.Integer, db.ForeignKey('dining_table.id'), nullable=False)
+    waiter_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    cashier_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    customer_name_snapshot = db.Column(db.String(120), nullable=False)
+    payment_method = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(80), nullable=False, default='confirmado')
+    sent_to_cash_at = db.Column(db.DateTime, nullable=True)
+    sent_to_kitchen_at = db.Column(db.DateTime, nullable=True)
+    ready_at = db.Column(db.DateTime, nullable=True)
+    delivered_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    order = db.relationship('Order', backref=db.backref('dine_in_info', uselist=False))
+    table = db.relationship('DiningTable')
+    waiter = db.relationship('User', foreign_keys=[waiter_id])
+    cashier = db.relationship('User', foreign_keys=[cashier_id])
+
+
+class DeliveryOrder(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False, unique=True)
+    courier_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    customer_name_snapshot = db.Column(db.String(120), nullable=False)
+    delivery_address = db.Column(db.Text, nullable=False)
+    delivery_distance_km = db.Column(db.Float, nullable=False, default=0)
+    delivery_fee = db.Column(db.Float, nullable=False, default=0)
+    route_map_data = db.Column(db.Text, nullable=True)
+    payment_method = db.Column(db.String(20), nullable=False)
+    cash_on_delivery = db.Column(db.Boolean, nullable=False, default=False)
+    payment_status = db.Column(db.String(20), nullable=False, default='pendiente')
+    status = db.Column(db.String(80), nullable=False, default='confirmado')
+    sent_to_kitchen_at = db.Column(db.DateTime, nullable=True)
+    ready_at = db.Column(db.DateTime, nullable=True)
+    delivered_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    order = db.relationship('Order', backref=db.backref('delivery_info', uselist=False))
+    courier = db.relationship('User', foreign_keys=[courier_id])
 
 
 @login_manager.user_loader
@@ -304,7 +420,7 @@ def seed_data():
 
 @app.context_processor
 def inject_helpers():
-    return {"money": money}
+    return {"money": money, "POINT_VALUE": POINT_VALUE, "POINTS_EARN_THRESHOLD": POINTS_EARN_THRESHOLD}
 
 
 @app.route("/")
@@ -372,6 +488,14 @@ def login():
             return redirect(url_for("admin_dashboard"))
         if user.role == "cocina":
             return redirect(url_for("kitchen"))
+        if user.role == "mesero":
+            return redirect(url_for("user_dashboard"))
+        if user.role == "cajero":
+            return redirect(url_for("cashier_dashboard"))
+        if user.role == "repartidor":
+            return redirect(url_for("delivery_dashboard"))
+        if user.role == "repartidor":
+            return redirect(url_for("staff_dashboard"))
         return redirect(url_for("user_dashboard"))
 
     return render_template("login.html")
@@ -388,25 +512,35 @@ def logout():
 
 @app.route("/user")
 @login_required
-@role_required("usuario")
+@role_required("usuario", "mesero")
 def user_dashboard():
     products = Product.query.order_by(Product.category.asc(), Product.name.asc()).all()
     categories = ["calientes", "fríos", "tortas", "galletas", "panes"]
+    ready_pickups = []
+    if current_user.role == "mesero":
+        ready_pickups = (
+            DineInOrder.query.join(Order, DineInOrder.order_id == Order.id)
+            .filter(DineInOrder.waiter_id == current_user.id, DineInOrder.status == "puedes pasar a recogerlo")
+            .order_by(DineInOrder.ready_at.is_(None), DineInOrder.ready_at.desc(), DineInOrder.created_at.desc())
+            .all()
+        )
     return render_template(
         "user_dashboard.html",
         products=products,
         categories=categories,
         active_order_id=session.get("active_order_id"),
+        ready_pickups=ready_pickups,
     )
 
 
 @app.route("/user/checkout", methods=["POST"])
 @login_required
-@role_required("usuario")
+@role_required("usuario", "mesero")
 def user_checkout():
     payload = request.form.get("cart_payload", "[]")
     payment_method = request.form.get("payment_method", "efectivo")
     dining_option = request.form.get("dining_option", "cafeteria")
+    delivery_address = request.form.get("delivery_address", "").strip()
     cart = parse_json_text(payload, [])
 
     if not cart:
@@ -414,6 +548,16 @@ def user_checkout():
         return redirect(url_for("user_dashboard"))
 
     order_total = 0
+    customer_name = current_user.name
+    table_number = None
+    if current_user.role == "mesero":
+        customer_name = request.form.get("customer_name", "").strip() or current_user.name
+        table_number = request.form.get("table_number", "").strip()
+        payment_method = request.form.get("payment_method", "efectivo")
+        if not table_number:
+            flash("El mesero debe registrar el número de mesa.", "error")
+            return redirect(url_for("user_dashboard"))
+
     order = Order(
         user_id=current_user.id,
         status="pedido confirmado",
@@ -443,12 +587,134 @@ def user_checkout():
         )
         product.sold_count += quantity
 
-    order.total = order_total
+    delivery_distance_km = 0
+    delivery_fee = 0
+    if dining_option == "domicilio":
+        if not delivery_address:
+            flash("Debes registrar la dirección para un pedido a domicilio.", "error")
+            return redirect(url_for("user_dashboard"))
+        delivery_distance_km = calculate_delivery_distance(delivery_address)
+        delivery_fee = calculate_delivery_fee(delivery_distance_km)
+
+    if current_user.role == "mesero":
+        final_total = order_total
+        applied_points = 0
+        discount = 0
+    else:
+        # Manejo de puntos: posibilidad de redimir puntos en el checkout
+        try:
+            use_points = int(request.form.get("use_points", "0") or 0)
+        except ValueError:
+            use_points = 0
+
+        available_points = current_user.points or 0
+        applied_points = max(0, min(use_points, available_points))
+        discount = applied_points * POINT_VALUE
+        final_total = max(0, order_total + delivery_fee - discount)
+
+    order.total = final_total
+
+    if current_user.role != "mesero":
+        # Actualizar puntos del usuario: restar los puntos aplicados primero
+        if applied_points > 0:
+            current_user.points = available_points - applied_points
+            db.session.add(
+                PointsTransaction(
+                    user_id=current_user.id,
+                    order_id=order.id,
+                    points_changed=-applied_points,
+                    type="redeem",
+                    description=f"Redimidos {applied_points} puntos por descuento",
+                )
+            )
+            order.points_redeemed = applied_points
+
+        # Calcular puntos ganados sobre el monto final pagado
+        earned_points = int(final_total // POINTS_EARN_THRESHOLD)
+        if earned_points > 0:
+            current_user.points = (current_user.points or 0) + earned_points
+            db.session.add(
+                PointsTransaction(
+                    user_id=current_user.id,
+                    order_id=order.id,
+                    points_changed=earned_points,
+                    type="gain",
+                    description=f"Ganados {earned_points} puntos por compra",
+                )
+            )
+            order.points_earned = earned_points
+
+    if current_user.role == "mesero":
+        table = None
+        if table_number:
+            table = DiningTable.query.filter_by(table_number=table_number).first()
+            if not table:
+                table = DiningTable(table_number=table_number)
+                db.session.add(table)
+                db.session.flush()
+
+        db.session.add(
+            OrderStatusHistory(
+                order_id=order.id,
+                service_type="presencial",
+                status="confirmado",
+                actor_role="mesero",
+                actor_user_id=current_user.id,
+                notes=f"Mesa {table_number}. Cliente: {customer_name}. Metodo de pago: {payment_method}.",
+            )
+        )
+        if table:
+            db.session.add(
+                DineInOrder(
+                    order_id=order.id,
+                    table_id=table.id,
+                    waiter_id=current_user.id,
+                    customer_name_snapshot=customer_name,
+                    payment_method=payment_method,
+                    status="confirmado",
+                )
+            )
+    elif dining_option == "domicilio":
+        db.session.add(
+            DeliveryOrder(
+                order_id=order.id,
+                customer_name_snapshot=customer_name,
+                delivery_address=delivery_address,
+                delivery_distance_km=delivery_distance_km,
+                delivery_fee=delivery_fee,
+                route_map_data=json.dumps(
+                    {
+                        "address": delivery_address,
+                        "distance_km": delivery_distance_km,
+                        "fee": delivery_fee,
+                    },
+                    ensure_ascii=False,
+                ),
+                payment_method=payment_method,
+                cash_on_delivery=payment_method == "efectivo",
+                payment_status="confirmado" if payment_method == "tarjeta" else "pendiente",
+                status="confirmado",
+            )
+        )
+        db.session.add(
+            OrderStatusHistory(
+                order_id=order.id,
+                service_type="domicilio",
+                status="confirmado",
+                actor_role="usuario",
+                actor_user_id=current_user.id,
+                notes=f"Direccion: {delivery_address}. Distancia estimada: {delivery_distance_km} km. Valor domicilio: {money(delivery_fee)}.",
+            )
+        )
     try:
         db.session.commit()
         session["active_order_id"] = order.id
         socketio.emit("orders_updated", {"message": "Nuevo pedido"})
-        if payment_method == "efectivo":
+        if current_user.role == "mesero":
+            flash("Pedido del mesero confirmado para mesa registrada.", "success")
+        elif dining_option == "domicilio":
+            flash(f"Pedido a domicilio confirmado. Valor del domicilio: {money(delivery_fee)}.", "success")
+        elif payment_method == "efectivo":
             flash("puedes acercarte a caja y cancelar para continuar con tu orden", "success")
         else:
             flash("Pago por tarjeta: simulación completada.", "success")
@@ -457,6 +723,8 @@ def user_checkout():
         db.session.rollback()
         print(f"Error al crear pedido: {e}")
         flash(f"Error al guardar pedido: {e}", "error")
+    if current_user.role == "mesero":
+        return redirect(url_for("user_dashboard"))
     return redirect(url_for("user_tracking"))
 
 
@@ -489,6 +757,47 @@ def admin_dashboard():
     top = sorted(products, key=lambda item: item.sold_count, reverse=True)[:5]
     bottom = sorted(products, key=lambda item: item.sold_count)[:5]
     return render_template("admin_dashboard.html", top=top, bottom=bottom, products=products)
+
+
+@app.route("/admin/users", methods=["GET", "POST"])
+@login_required
+@role_required("admin")
+def admin_users():
+    allowed_roles = ["mesero", "cajero", "repartidor"]
+
+    if request.method == "POST":
+        name = request.form["name"].strip()
+        email = request.form["email"].strip().lower()
+        password = request.form["password"]
+        role = request.form.get("role", "mesero")
+
+        if role not in allowed_roles:
+            flash("Rol no permitido.", "error")
+            return redirect(url_for("admin_users"))
+
+        if User.query.filter_by(email=email).first():
+            flash("Ese correo ya existe.", "error")
+            return redirect(url_for("admin_users"))
+
+        db.session.add(
+            User(
+                name=name,
+                email=email,
+                password_hash=generate_password_hash(password),
+                role=role,
+            )
+        )
+        try:
+            db.session.commit()
+            flash(f"Usuario {role} creado correctamente.", "success")
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error al crear usuario de staff: {e}")
+            flash(f"Error al guardar: {e}", "error")
+        return redirect(url_for("admin_users"))
+
+    staff_users = User.query.filter(User.role.in_(allowed_roles)).order_by(User.role.asc(), User.name.asc()).all()
+    return render_template("admin_users.html", staff_users=staff_users, allowed_roles=allowed_roles)
 
 
 @app.route("/admin/inventory", methods=["GET", "POST"])
@@ -673,11 +982,102 @@ def kitchen():
 def kitchen_ready(order_id):
     order = Order.query.get_or_404(order_id)
     order.kitchen_done = True
-    order.status = "en camino"
+    order.status = "en camino" if order.dining_option == "domicilio" else "puedes pasar a recogerlo"
+    if order.dining_option == "domicilio" and order.delivery_info:
+        order.delivery_info.status = "en camino"
+        order.delivery_info.ready_at = datetime.utcnow()
+    elif order.dining_option != "domicilio" and order.dine_in_info:
+        order.dine_in_info.status = "puedes pasar a recogerlo"
+        order.dine_in_info.ready_at = datetime.utcnow()
     db.session.commit()
     socketio.emit("order_status_updated", {"order_id": order.id, "status": order.status})
     flash("Pedido marcado como listo.", "success")
     return redirect(url_for("kitchen"))
+
+
+@app.route("/staff")
+@login_required
+@role_required("mesero", "cajero", "repartidor")
+def staff_dashboard():
+    return render_template("staff_dashboard.html")
+
+
+@app.route("/cashier")
+@login_required
+@role_required("cajero")
+def cashier_dashboard():
+    pending_orders = (
+        DineInOrder.query.filter_by(status="confirmado")
+        .order_by(DineInOrder.created_at.asc())
+        .all()
+    )
+    return render_template("cashier_dashboard.html", pending_orders=pending_orders)
+
+
+@app.route("/cashier/<int:order_id>/send-to-kitchen", methods=["POST"])
+@login_required
+@role_required("cajero")
+def cashier_send_to_kitchen(order_id):
+    order = Order.query.get_or_404(order_id)
+    dine_in = DineInOrder.query.filter_by(order_id=order.id).first_or_404()
+    order.status = "en cocina"
+    dine_in.status = "preparando"
+    dine_in.cashier_id = current_user.id
+    dine_in.sent_to_cash_at = dine_in.sent_to_cash_at or datetime.utcnow()
+    dine_in.sent_to_kitchen_at = datetime.utcnow()
+    db.session.add(
+        OrderStatusHistory(
+            order_id=order.id,
+            service_type="presencial",
+            status="en cocina",
+            actor_role="cajero",
+            actor_user_id=current_user.id,
+            notes=f"Mesa {dine_in.table.table_number}. Pedido enviado a cocina.",
+        )
+    )
+    db.session.commit()
+    socketio.emit("order_status_updated", {"order_id": order.id, "status": order.status})
+    flash("Pedido enviado a cocina.", "success")
+    return redirect(url_for("cashier_dashboard"))
+
+
+@app.route("/delivery")
+@login_required
+@role_required("repartidor")
+def delivery_dashboard():
+    deliveries = (
+        DeliveryOrder.query.join(Order, DeliveryOrder.order_id == Order.id)
+        .filter(Order.dining_option == "domicilio", Order.status != "entregado")
+        .order_by(DeliveryOrder.created_at.asc())
+        .all()
+    )
+    return render_template("delivery_dashboard.html", deliveries=deliveries)
+
+
+@app.route("/delivery/<int:order_id>/delivered", methods=["POST"])
+@login_required
+@role_required("repartidor")
+def delivery_delivered(order_id):
+    order = Order.query.get_or_404(order_id)
+    delivery = DeliveryOrder.query.filter_by(order_id=order.id).first()
+    order.status = "entregado"
+    if delivery:
+        delivery.status = "entregado"
+        delivery.delivered_at = datetime.utcnow()
+    db.session.add(
+        OrderStatusHistory(
+            order_id=order.id,
+            service_type="domicilio",
+            status="entregado",
+            actor_role="repartidor",
+            actor_user_id=current_user.id,
+            notes="Entrega completada por repartidor.",
+        )
+    )
+    db.session.commit()
+    socketio.emit("order_status_updated", {"order_id": order.id, "status": order.status})
+    flash("Pedido marcado como entregado.", "success")
+    return redirect(url_for("delivery_dashboard"))
 
 
 @app.route("/api/orders/<int:order_id>")
@@ -709,6 +1109,71 @@ def api_order(order_id):
 
 with app.app_context():
     db.create_all()
+
+    # Si la aplicación ya tenía una base creada, asegurar que existan las columnas nuevas
+    # antes de intentar consultar o sembrar datos.
+    try:
+        with db.engine.connect() as conn:
+            dialect_name = db.engine.dialect.name
+
+            def has_column(table, column):
+                if dialect_name == "mysql":
+                    query = text(
+                        "SELECT COUNT(*) FROM information_schema.COLUMNS "
+                        "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=:table AND COLUMN_NAME=:column"
+                    )
+                    result = conn.execute(query, {"table": table, "column": column}).scalar()
+                    return int(result or 0) > 0
+
+                if dialect_name == "sqlite":
+                    result = conn.execute(text(f"PRAGMA table_info('{table}')")).fetchall()
+                    return any(row[1] == column for row in result)
+
+                return True
+
+            def add_column(table, column_sql):
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column_sql}"))
+
+            if not has_column("user", "points"):
+                if dialect_name == "mysql":
+                    add_column("`user`", "`points` INT NOT NULL DEFAULT 0")
+                else:
+                    add_column('"user"', '"points" INTEGER NOT NULL DEFAULT 0')
+
+            if not has_column("order", "points_earned"):
+                if dialect_name == "mysql":
+                    add_column("`order`", "`points_earned` INT NOT NULL DEFAULT 0")
+                else:
+                    add_column('"order"', '"points_earned" INTEGER NOT NULL DEFAULT 0')
+
+            if not has_column("order", "points_redeemed"):
+                if dialect_name == "mysql":
+                    add_column("`order`", "`points_redeemed` INT NOT NULL DEFAULT 0")
+                else:
+                    add_column('"order"', '"points_redeemed" INTEGER NOT NULL DEFAULT 0')
+
+            # La tabla de transacciones ya la crea `db.create_all()`, pero MySQL antiguo puede
+            # requerirla si la base fue creada antes de este modelo.
+            if dialect_name == "mysql":
+                conn.execute(text('''
+                    CREATE TABLE IF NOT EXISTS points_transactions (
+                      id INT AUTO_INCREMENT PRIMARY KEY,
+                      user_id INT NOT NULL,
+                      order_id INT NULL,
+                      points_changed INT NOT NULL,
+                      type ENUM('gain','redeem') NOT NULL,
+                      description VARCHAR(255) NULL,
+                      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      CONSTRAINT fk_points_user FOREIGN KEY (user_id) REFERENCES `user`(id)
+                        ON DELETE CASCADE ON UPDATE CASCADE,
+                      CONSTRAINT fk_points_order FOREIGN KEY (order_id) REFERENCES `order`(id)
+                        ON DELETE SET NULL ON UPDATE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                '''))
+    except Exception as e:
+        # No queremos romper el arranque si la comprobación falla; loguear y continuar.
+        print('Advertencia al asegurar esquema MySQL:', e)
+
     seed_data()
 
 

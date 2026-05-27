@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Caja{% endblock %}
+{% block header_title %}Panel de caja{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="eyebrow">Cajero</p>
+  <h2>Pedidos confirmados por mesero</h2>
+  <div class="kitchen-list">
+    {% if pending_orders %}
+      {% for dine_in in pending_orders %}
+        <article class="kitchen-card">
+          <div>
+            <strong>Pedido #{{ dine_in.order_id }}</strong>
+            <p>Mesa: {{ dine_in.table.table_number }}</p>
+            <p>Cliente: {{ dine_in.customer_name_snapshot }}</p>
+            <p>Mesero: {{ dine_in.waiter.name }}</p>
+            <p>Pago: {{ dine_in.payment_method }}</p>
+            <p>Estado: {{ dine_in.status }}</p>
+            <p>Total: {{ money(dine_in.order.total) }}</p>
+          </div>
+          <form method="post" action="{{ url_for('cashier_send_to_kitchen', order_id=dine_in.order_id) }}">
+            <button class="btn primary" type="submit">Enviar a cocina</button>
+          </form>
+        </article>
+      {% endfor %}
+    {% else %}
+      <p>No hay pedidos pendientes para caja.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

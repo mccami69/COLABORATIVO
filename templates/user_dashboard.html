@@ -3,6 +3,29 @@
 {% block header_title %}Menú y carrito{% endblock %}
 {% block content %}
 <section class="dashboard-grid user-grid">
+  {% if current_user.role == 'mesero' %}
+    <div class="panel panel-wide">
+      <p class="eyebrow">Recogida</p>
+      <h2>Pedidos listos para recoger</h2>
+      <div class="pickup-orders-list kitchen-list">
+        {% if ready_pickups %}
+          {% for pickup in ready_pickups %}
+            <article class="kitchen-card">
+              <div>
+                <strong>Mesa {{ pickup.table.table_number }} - Pedido #{{ pickup.order_id }}</strong>
+                <p>Cliente: {{ pickup.customer_name_snapshot }}</p>
+                <p>Estado: {{ pickup.status }}</p>
+                <p>Metodo de pago: {{ pickup.payment_method }}</p>
+              </div>
+            </article>
+          {% endfor %}
+        {% else %}
+          <p>No hay pedidos listos para recoger.</p>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
   <div class="panel panel-wide">
     <div class="section-header">
       <div>
@@ -63,24 +86,64 @@
       <button class="link-btn" id="clear-cart" type="button">Vaciar</button>
     </div>
 
+    {% if current_user.role == 'usuario' %}
+      <div style="padding:8px 12px; border-bottom:1px solid #eee;">
+        <p><strong>Tus puntos:</strong> {{ current_user.points or 0 }}</p>
+      </div>
+    {% else %}
+      <div style="padding:8px 12px; border-bottom:1px solid #eee;">
+        <p><strong>Atención de mesero:</strong> registra mesa, cliente y método de pago.</p>
+      </div>
+    {% endif %}
+
     <div id="cart-items" class="cart-items"></div>
     <div class="cart-total">
+      <span>Subtotal</span>
+      <strong id="cart-subtotal">$0</strong>
+    </div>
+    <div class="cart-discount" style="display:none;">
+      <span>Descuento puntos</span>
+      <strong id="cart-discount">$0</strong>
+    </div>
+    <div class="cart-total final">
       <span>Total a pagar</span>
       <strong id="cart-total">$0</strong>
     </div>
 
     <form id="checkout-form" class="checkout-form" method="post" action="{{ url_for('user_checkout') }}">
+      <input type="hidden" id="staff-role" value="{{ current_user.role }}">
       <input type="hidden" name="cart_payload" id="cart-payload">
+      {% if current_user.role == 'usuario' %}
+        <label>Usar puntos (ingresa cantidad de puntos a redimir)</label>
+        <input type="number" name="use_points" id="use-points" min="0" value="0" max="{{ current_user.points or 0 }}">
+      {% else %}
+        <input type="hidden" name="use_points" id="use-points" value="0">
+        <label>Nombre del usuario</label>
+        <input type="text" name="customer_name" id="customer-name" required>
+
+        <label>Número de mesa</label>
+        <input type="text" name="table_number" id="table-number" required>
+      {% endif %}
+      <input type="hidden" id="point-value" value="{{ POINT_VALUE }}">
+      <input type="hidden" id="points-threshold" value="{{ POINTS_EARN_THRESHOLD }}">
       <label>Pago</label>
       <select name="payment_method" id="payment-method">
         <option value="efectivo">Efectivo</option>
         <option value="tarjeta">Tarjeta</option>
       </select>
-      <label>¿Comer aquí o llevar?</label>
-      <select name="dining_option" id="dining-option">
-        <option value="cafeteria">En la cafetería</option>
-        <option value="llevar">Para llevar</option>
-      </select>
+      {% if current_user.role == 'usuario' %}
+        <label>¿Comer aquí o a domicilio?</label>
+        <select name="dining_option" id="dining-option">
+          <option value="cafeteria">En la cafetería</option>
+          <option value="domicilio">A domicilio</option>
+        </select>
+        <div id="delivery-address-group" style="display:none;">
+          <label>Dirección de entrega</label>
+          <input type="text" name="delivery_address" id="delivery-address" placeholder="Ingresa la dirección completa">
+        </div>
+      {% else %}
+        <input type="hidden" name="dining_option" id="dining-option" value="cafeteria">
+      {% endif %}
       <button class="btn primary full" type="submit">Confirmar pedido</button>
     </form>
   </aside>
